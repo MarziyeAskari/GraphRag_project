@@ -1,39 +1,143 @@
+import os
+import pandas as pd
+import logging
 from neo4j import GraphDatabase
+from dotenv import load_dotenv
+from neo4j_graphrag.indexes import create_vector_index
+from embedding_function import *  # Your function to compute embeddings
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 class Neo4jGraph:
-    def __init__(self, uri="bolt://localhost:7687", user="neo4j", password="your_password"):
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+    def __init__(self, uri=None, user=None, password=None):
+        """Initialize Neo4j connection with credentials from environment variables."""
+        self.uri = uri or os.getenv("NEO4J_URI", "bolt://staging.shamim.review:7474")
+        self.user = user or os.getenv("NEO4J_USER", "neo4j")
+        self.password = password or os.getenv("NEO4J_PASSWORD", "lmis_neo4j")
+
+        try:
+            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            logging.info("Successfully connected to Neo4j.")
+        except Exception as e:
+            logging.error(f"Failed to connect to Neo4j: {e}")
+            raise
 
     def close(self):
-        self.driver.close()
+        """Close the Neo4j connection."""
+        if self.driver:
+            self.driver.close()
+            logging.info("Neo4j connection closed.")
 
-    def create_sample_data(self):
-        """Create sample nodes and relationships in Neo4j."""
-        query = """
-        MERGE (alice:Person {name: 'Alice', role: 'Engineer'})
-        MERGE (bob:Person {name: 'Bob', role: 'Manager'})
-        MERGE (techcorp:Company {name: 'TechCorp'})
-        MERGE (alice)-[:WORKS_AT]->(techcorp)
-        MERGE (bob)-[:WORKS_AT]->(techcorp)
-        MERGE (alice)-[:REPORTS_TO]->(bob)
+    def load_csv_to_graph(self, phenotype_to_genes_csv, phenotype_csv):
+        """Load nodes and relationships from local CSV files into Neo4j with batch processing."""
+        try:
+            phenotype_to_genes = pd.read_csv(phenotype_to_genes_csv)
+            phenotype = pd.read_csv(phenotype_csv)
+        except Exception as e:
+            logging.error(f"Error reading CSV files: {e}")
+            return
+
+        # Load phenotype_to_genes.csv in batch
+        query_1 = """
+        UNWIND $rows AS row
+        MERGE (s:Symptom {id: row.hpo_id})
+        ON CREATE SET s.name = row.hpo_name
+        MERGE (g:Gene {id: row.gene_id})
+        ON CREATE SET g.name = row.gene_symbol
+        MERGE (d:Disease {id: row.disease_id})
+        MERGE (s)-[:HAS_GENE]->(g)
+        MERGE (s)-[:ASSOCIATED_WITH]->(d)
+        MERGE (d)-[:HAS_SYMPTOM]->(s)
+        MERGE (g)-[:ASSOCIATED_WITH]->(d)
+        MERGE (d)-[:HAS_GENE]->(g)
+        MERGE (g)-[:IMPACTS]->(s);
+        """
+        query_2 = """
+        UNWIND $rows AS row
+        MERGE (d:Disease {id: row.database_id})
+        ON CREATE SET d.name = row.disease_name
+        MERGE (s:Symptom {hpo_id: row.hpo_id})
+        MERGE (d)-[:HAS_SYMPTOM]->(s);
+        """
+
+        with self.driver.session() as session:
+            try:
+                session.run(query_1, rows=phenotype_to_genes.to_dict("records"))
+                session.run(query_2, rows=phenotype.to_dict("records"))
+                logging.info("Data successfully loaded into Neo4j.")
+            except Exception as e:
+                logging.error(f"Error executing Neo4j queries: {e}")
+
+    def update_name_embeddings_by_label(self):
+        """
+        For each label in the database, compute and update the 'name_embedding'
+        property for nodes that have a 'name' property.
         """
         with self.driver.session() as session:
-            session.run(query)
+            # Retrieve all labels in the database
+            labels_result = session.run("CALL db.labels() YIELD label RETURN label")
+            labels = [record["label"] for record in labels_result]
+            logging.info(f"Found labels: {labels}")
 
-    def query_graph(self, person_name):
-        """Retrieve relationships for a specific person."""
-        query = """
-        MATCH (p:Person {name: $name})-[r]->(c) 
-        RETURN type(r) AS relationship, labels(c)[0] AS node_type, c.name AS node_name
+            for label in labels:
+                # Fetch nodes for each label that have a 'name' property
+                query_fetch = f"MATCH (n:{label}) WHERE exists(n.name) RETURN id(n) as nodeId, n.name as name"
+                results = session.run(query_fetch)
+                for record in results:
+                    node_id = record["nodeId"]
+                    name_text = record["name"]
+                    # Compute the embedding (you need to implement get_embedding)
+                    embedding_vector = get_embedding(name_text)
+                    # Update the node with the computed embedding
+                    query_update = f"""
+                    MATCH (n:{label}) WHERE id(n) = $nodeId
+                    SET n.name_embedding = $embedding
+                    """
+                    session.run(query_update, nodeId=node_id, embedding=embedding_vector)
+            logging.info("Name embeddings updated for all nodes by label.")
+
+    def create_vector_indexes_for_all_labels(self, embedding_property="name_embedding", dimensions=1536,
+                                             similarity_fn="cosine"):
+        """
+        Retrieve all labels from the database and create a vector index on each label using the specified embedding property.
         """
         with self.driver.session() as session:
-            result = session.run(query, name=person_name)
-            return [{"relationship": record["relationship"], "node_type": record["node_type"], "node_name": record["node_name"]} for record in result]
+            labels_result = session.run("CALL db.labels() YIELD label RETURN label")
+            labels = [record["label"] for record in labels_result]
+            logging.info(f"Found labels for indexing: {labels}")
+            for label in labels:
+                try:
+                    create_vector_index(
+                        self.driver,
+                        index_name=f"{label}_name_embeddings",
+                        label=label,
+                        embedding_property=embedding_property,
+                        dimensions=dimensions,
+                        similarity_fn=similarity_fn
+                    )
+                    logging.info(f"Vector index '{label}_name_embeddings' created for label '{label}'.")
+                except Exception as e:
+                    logging.error(f"Error creating vector index for label '{label}': {e}")
 
-# Example Usage
+
+# Example Usage:
 if __name__ == "__main__":
     neo4j_db = Neo4jGraph()
-    neo4j_db.create_sample_data()
-    results = neo4j_db.query_graph("Alice")
-    print(results)  # Example output
+    # Load your CSV data into Neo4j
+    # neo4j_db.load_csv_to_graph("datasets/phenotype_to_genes.csv", "datasets/phenotype.csv")
+
+    # Update nodes with embeddings computed from the 'name' property
+    neo4j_db.update_name_embeddings_by_label()
+
+    # Create a vector index on the 'name_embedding' property for semantic search
+    neo4j_db.create_vector_indexes_for_all_labels(
+        embedding_property="name_embedding",
+        dimensions=1536,
+        similarity_fn="cosine"
+    )
     neo4j_db.close()
