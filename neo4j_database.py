@@ -104,7 +104,7 @@ class Neo4jGraph:
                     except Exception as e:
                         logging.error(f"Error creating Name embeddings for label '{label}', AND node_id {node_id}: {e}")
 
-    logging.info("Name embeddings updated for all nodes by label.")
+        logging.info("Name embeddings updated for all nodes by label.")
 
     def create_vector_indexes_for_all_labels(self, embedding_property="name_embedding", dimensions=1536):
         """
@@ -116,7 +116,7 @@ class Neo4jGraph:
             logging.info(f"Found labels for indexing: {labels}")
             for label in labels:
                 try:
-                    index_name = f"{label}_name_embeddings"
+                    index_name = f"text_embeddings"
                     create_vector_index(
                         self.driver,
                         index_name,
@@ -125,7 +125,7 @@ class Neo4jGraph:
                         dimensions=dimensions,
                         similarity_fn="cosine"
                     )
-                    logging.info(f"Vector index '{label}_name_embeddings' created for label '{label}'.")
+                    logging.info(f"Vector index 'text_embeddings' created for label '{label}'.")
                 except Exception as e:
                     logging.error(f"Error creating vector index for label '{label}': {e}")
 
