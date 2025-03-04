@@ -36,8 +36,8 @@ class Neo4jGraph:
     def load_csv_and_embed(self, phenotype_to_genes_csv, phenotype_csv):
         """Load nodes and relationships into Neo4j while computing and storing embeddings."""
         try:
-            phenotype_to_genes = pd.read_csv(phenotype_to_genes_csv)
-            phenotype = pd.read_csv(phenotype_csv)
+            phenotype_to_genes = pd.read_csv(phenotype_to_genes_csv, encoding="utf-8-sig")
+            phenotype = pd.read_csv(phenotype_csv, encoding="utf-8-sig")
         except Exception as e:
             logging.error(f"Error reading CSV files: {e}")
             return
@@ -49,7 +49,9 @@ class Neo4jGraph:
 
         add_embeddings(phenotype_to_genes, "hpo_name")
         add_embeddings(phenotype_to_genes, "gene_symbol")
+        phenotype_to_genes.to_csv('phenotype_to_genes_embed.csv')
         add_embeddings(phenotype, "disease_name")
+        phenotype.to_csv('phenotype.csv')
 
         query = """
         UNWIND $rows AS row
@@ -125,7 +127,7 @@ if __name__ == "__main__":
     neo4j_db = Neo4jGraph()
     current_directory = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(current_directory, "datasets")
-    phenotype = pd.read_csv(f"{output_dir}\\phenotype.csv")
+    # phenotype = pd.read_csv(f"{output_dir}\\phenotype.csv")
 
     # Load CSV and embed while inserting
     neo4j_db.load_csv_and_embed(f"{output_dir}\\phenotype_to_genes.csv", f"{output_dir}\\phenotype.csv")

@@ -55,10 +55,15 @@ class GraphRAG:
             graph=graph,
             verbose=True,
             cypher_prompt=self.cypher_prompt,
-            return_intermediate_steps=True,
+            # return_intermediate_steps=True,
             allow_dangerous_requests=True,
         )
 
     def generate_cypher_query(self, question: str) -> str:
         response = self.cypher_chain.run(question)
-        return textwrap.fill(response, 60)
+
+        if response and response != "I don't know the answer.":
+            return textwrap.fill(response, 60)  # Ensure we return the actual response
+
+        return "No relevant data found."
+

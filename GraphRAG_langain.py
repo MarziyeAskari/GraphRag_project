@@ -23,6 +23,6 @@ chain = GraphCypherQAChain.from_llm(
     allow_dangerous_requests=True,
 )
 
-result = chain.invoke({"query": "tell me all Genes  is related to Preauricular pit"})
+result = chain.invoke({"query": "tell me all Genes names  is related to Preauricular pit"})
 print(f"Intermediate steps: {result['intermediate_steps']}")
 print(f"Final answer: {result['result']}")
