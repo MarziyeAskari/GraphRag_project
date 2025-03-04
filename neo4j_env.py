@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore")
 NEO4J_URI = 'bolt://staging.shamim.review:7687'
 NEO4J_USERNAME = 'neo4j'
 NEO4J_PASSWORD = 'lmis_neo4j'
-NEO4J_DATABASE = os.getenv('neo4j')
+NEO4J_DATABASE = 'neo4j'
 OPENAI_API_KEY = get_API_key()
 # OPENAI_ENDPOINT = os.getenv('OPENAI_BASE_URL') + '/embeddings'
 

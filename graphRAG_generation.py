@@ -3,8 +3,10 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts.prompt import PromptTemplate
 from langchain.chains import GraphCypherQAChain
 from neo4j_env import graph
+from get_API_key import get_API_key
 import textwrap
-
+import os
+os.environ["OPENAI_API_KEY"] = get_API_key()
 retrieval_qa_chat_prompt = """
 Task: Generate Cypher statement to 
 query a graph database.
@@ -42,7 +44,6 @@ The question is:
 
 """
 
-
 class GraphRAG:
     def __init__(self):
         self.cypher_prompt = PromptTemplate(
@@ -54,6 +55,8 @@ class GraphRAG:
             graph=graph,
             verbose=True,
             cypher_prompt=self.cypher_prompt,
+            return_intermediate_steps=True,
+            allow_dangerous_requests=True,
         )
 
     def generate_cypher_query(self, question: str) -> str:
