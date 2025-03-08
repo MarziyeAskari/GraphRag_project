@@ -17,7 +17,7 @@ def query_graph_or_vector_rag(use_graph: bool, question: str) -> str:
 
 
 # query
-question = "tell me all Genes is related to Preauricular pit"
+question = "tell me all Genes is related to Pseudohyperkalemia, familial"
 
 # Use GraphRAG -> True
 # Use VectorRAG -> False
