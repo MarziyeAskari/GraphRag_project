@@ -8,7 +8,6 @@ def query_graph_or_vector_rag(use_graph: bool, question: str) -> str:
         query_generator = GraphRAG()
         cypher_query = query_generator.generate_cypher_query(question)
         return f"Cypher Query: {cypher_query}"
-
     else:
         # VectorRAG
         retrieval_qa = VectorRAG()
@@ -16,8 +15,8 @@ def query_graph_or_vector_rag(use_graph: bool, question: str) -> str:
         return f"Answer: {answer}"
 
 
-# query
-question = "tell me all Genes is related to Pseudohyperkalemia, familial"
+# Example query
+question = "tell me all Genes related to Pseudohyperkalemia"
 
 # Use GraphRAG -> True
 # Use VectorRAG -> False

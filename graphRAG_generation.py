@@ -1,80 +1,140 @@
+import re
+
 from langchain_community.graphs import Neo4jGraph
 from langchain_openai import ChatOpenAI
 from langchain.prompts.prompt import PromptTemplate
 from langchain.chains import GraphCypherQAChain
+from langchain_core.output_parsers import StrOutputParser
 from neo4j_env import graph
 from get_API_key import get_API_key
 import textwrap
 import os
+from embedding_function import get_embedding
 
 os.environ["OPENAI_API_KEY"] = get_API_key()
+entity_extraction_prompt = """
+Your task is to identify the main medical entity from a user's question.
+Focus on extracting ONLY the specific entity name that needs vector search.
+
+Rules:
+1. Return ONLY the entity name, nothing else
+2. Prioritize disease names, then symptoms, then genes
+3. Preserve exact spelling and casing
+4. Ignore generic terms like "genes" or "diseases"
+
+Examples:
+Question: What genes are related to Pseudohyperkalemia?
+Entity: Pseudohyperkalemia
+
+Question: What diseases are linked to "Preauricular"?
+Entity: Preauricular
+
+Question: {question}
+Entity: """
+
 retrieval_qa_chat_prompt = """
-Task: Generate Cypher statement to 
-query a graph database.
+Task: Generate a Cypher statement to query a graph database.
 Instructions:
-Use only the provided relationship types and properties in the 
-schema. Do not use any other relationship types or properties that
-are not provided.
-Remember the relationships are like Schema:
+- Use vector search to find the closest matching entity if an exact match is not found.
+- Use the index "name_embeddings" for similarity search on node names.
+
+Schema:
 {schema}
-if the question mentions 'gene' it refers to a Gene node, 
+
+If the question mentions 'gene' it refers to a Gene node, 
 'symptom' refers to a Symptom node, and 
 'disease' refers to a Disease node.
 
-IMPORTANT: If an entity name in the question appears to be a disease, it **must** be assigned to a Disease node (`d:Disease`), even if it could be confused with a symptom.
+Use this pattern for fuzzy search:
+CALL db.index.vector.queryNodes("name_embeddings", 1, $embedding) 
+YIELD node, score 
+WHERE score > 0.7 
+RETURN node.name
 
-If the question refers to 'has_gene', 'associated_with', 'has_symptom', or 'impacts', use them as relationships.
-
-Note: Do not include any explanations or apologies in your responses.
-Do not include any text except the generated Cypher statement. Remember to correct the typo in names.
-
-Example 1: What genes are related to a specific disease?
+Example 1: 
+**User Question:** What genes are related to Pseudohyperkalemia?
+**Generated Query:**
+```
 MATCH (d:Disease)-[:HAS_GENE]->(g:Gene)
-WHERE d.name = "Pseudohyperkalemia, familial, 2, due to red cell leak"
-RETURN d.id, d.name, g.id, g.name
+WHERE d.name = (
+  CALL db.index.vector.queryNodes("name_embeddings", 1,  $embedding) 
+  YIELD node, score 
+  WHERE score > 0.7 
+  RETURN node.name
+)
+RETURN g.name
+```
 
-Example 2: What diseases are associated with a specific symptom?
+Example 2: 
+**User Question:** What diseases are linked to "Preauricular"?
+**Generated Query:**
+```
 MATCH (s:Symptom)-[:ASSOCIATED_WITH]->(d:Disease)
-WHERE s.name = "Preauricular pit"
-RETURN d.id, d.name
-
-Example 3: What symptoms are linked to a specific gene?
-MATCH (g:Gene)-[:HAS_GENE]->(s:Symptom)
-WHERE g.name = "BRCA1"
-RETURN s.name
+WHERE s.name = (
+  CALL db.index.vector.queryNodes("name_embeddings", 1, $embedding) 
+  YIELD node, score 
+  WHERE score > 0.7 
+  RETURN node.name
+)
+RETURN d.name
+```
 
 The question is:
 {question}
-
 """
-
 
 
 class GraphRAG:
     def __init__(self):
-        self.cypher_prompt = PromptTemplate(
-            input_variables=["schema", "question"],
-            template=retrieval_qa_chat_prompt
+        # Initialize LLM for entity extraction
+        self.llm = ChatOpenAI(temperature=0)
+
+        # Entity extraction chain
+        self.entity_chain = (
+                PromptTemplate.from_template(entity_extraction_prompt)
+                | self.llm
+                | StrOutputParser()
         )
+        # Cypher generation chain
         self.cypher_chain = GraphCypherQAChain.from_llm(
-            ChatOpenAI(temperature=0),
+            llm=self.llm,
             graph=graph,
             verbose=True,
-            cypher_prompt=self.cypher_prompt,
+            cypher_prompt=PromptTemplate(
+                input_variables=["schema", "question"],
+                template=retrieval_qa_chat_prompt
+            ),
             return_intermediate_steps=True,
             allow_dangerous_requests=True,
         )
 
-    def generate_cypher_query(self, question: str) -> str:
-        response = self.cypher_chain.invoke(question)
+    async def extract_entity(self, question: str) -> str:
+        """Use LLM to identify the exact search entity"""
+        entity = await self.entity_chain.ainvoke({"question": question})
+        return entity.strip('"').strip()
 
-        # Check if the response is a dictionary and extract the Cypher query
-        if isinstance(response, dict):
-            cypher_query = response.get("result", "")
-        else:
-            cypher_query = response  # Assume it's already a string
+    async def generate_cypher_query(self, question: str) -> str:
+        # Extract entity using LLM
+        entity = await self.extract_entity(question)
+        if not entity or entity.lower() == "none":
+            return "Error: No valid entity extracted."
 
-        if cypher_query and cypher_query != "I don't know the answer.":
-            return textwrap.fill(cypher_query, 60)  # Ensure we return a string
+        # Get embedding
+        embedding = get_embedding(entity)
 
-        return "I don't know the answer."
+        # Generate Cypher with parameters
+        try:
+            response = self.cypher_chain.invoke({
+                "question": question,
+                "parameters": {"embedding": embedding}
+            })
+            query = response.get("result", "")
+            return self._validate_query(query)
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    def _validate_query(self, query: str) -> str:
+        """Ensure query doesn't contain Python functions"""
+        if "get_embedding" in query:
+            return "Invalid query: Python function in Cypher"
+        return textwrap.fill(query, 60)

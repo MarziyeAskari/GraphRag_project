@@ -165,7 +165,7 @@ if __name__ == "__main__":
     neo4j_db.create_vector_index(
         index_name="name_embeddings",
         label="Symptom",
-        embedding_property="name_embeddingس",
+        embedding_property="name_embeddings",
         dimensions=1536,
         similarity_fn="cosine"
     )

@@ -17,7 +17,7 @@ OPENAI_API_KEY = get_API_key()
 # OPENAI_ENDPOINT = os.getenv('OPENAI_BASE_URL') + '/embeddings'
 
 # Global constants
-VECTOR_INDEX_NAME = 'text_embeddings'
+VECTOR_INDEX_NAME = 'name_embeddings'
 VECTOR_NODE_LABEL = 'name_embeddings'
 VECTOR_SOURCE_PROPERTY = 'name_embeddings'
 VECTOR_EMBEDDING_PROPERTY = 'name_embeddings'
