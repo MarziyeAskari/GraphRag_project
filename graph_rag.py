@@ -57,12 +57,10 @@ graph_rag = GraphRAG(
 )
 
 try:
-
-
-    # response = graph_rag.search(
-    #     query_text="Premature centromere division",
-    #     retriever_config={"query_params": {"query": "Premature centromere division"}}
-    # )
-    # print("Final Answer:", response.answer)
+    response = graph_rag.search(
+        query_text="Premature centromere division",
+        retriever_config={"query_params": {"query": "Premature centromere division"}}
+    )
+    print("Final Answer:", response.answer)
 finally:
     driver.close()

@@ -124,7 +124,7 @@ class Neo4jGraph:
 
             logging.info("Updated Disease nodes with names and embeddings.")
 
-    def create_vector_index(self, index_name="name_embeddings", label="Symptom", embedding_property="name_embedding",
+    def create_vector_index(self, index_name, label, embedding_property,
                             dimensions=1536, similarity_fn="cosine"):
         """
         Create a vector index on nodes with the given label and embedding property.
@@ -153,19 +153,19 @@ if __name__ == "__main__":
     # Update nodes with embeddings computed from the 'name' property
     # neo4j_db.update_name_embeddings()
     # Load disease names from CSV
-    disease_df = pd.read_csv("datasets/phenotype.csv")
-    # disease_df_ = load_disease_name_mapping("datasets/phenotype_to_genes.csv")
-    disease_name_mapping = dict(zip(disease_df["database_id"], disease_df["disease_name"]))
+    # disease_df = pd.read_csv("datasets/phenotype.csv")
+    # # disease_df_ = load_disease_name_mapping("datasets/phenotype_to_genes.csv")
+    # disease_name_mapping = dict(zip(disease_df["database_id"], disease_df["disease_name"]))
 
     # Update Disease nodes with names and embeddings
     # neo4j_db.update_disease_names_and_embeddings(disease_name_mapping)
 
-
     # Create a vector index on the 'name_embedding' property for semantic search
+
     neo4j_db.create_vector_index(
-        index_name="name_embeddings",
+        index_name="text_embeddings_symptom",
         label="Symptom",
-        embedding_property="name_embeddings",
+        embedding_property="name_embedding",
         dimensions=1536,
         similarity_fn="cosine"
     )
