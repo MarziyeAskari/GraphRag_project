@@ -5,7 +5,7 @@ from get_API_key import get_API_key
 
 load_dotenv('.env', override=True)
 # Warning control
-import warnings
+import  warnings
 
 warnings.filterwarnings("ignore")
 
